@@ -23,4 +23,4 @@ SO. If you want to do the microbiomics field any good:
 2. differential analysis and visualization
 3. many more complete & strain(ish)-level MAGs
 
-# So check out the wiki to get started!
+# So check out the wiki to get started! https://github.com/TealFurnholm/Teals_Strain-Level_Metagenome_Pipeline/wiki
