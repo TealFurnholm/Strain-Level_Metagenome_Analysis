@@ -5,7 +5,10 @@
    #   comics dedupe in=dedup.fasta out=dedup2.fasta tuc e=10 rnc=t ngn=t fo c pc=f absorbcontainment=f mo=200 numaffixmaps=3 dot=graph.dot overwrite=t
 #the .dot file outputs based on input contigs and will not keep contig names if you cluster (bug in dedupe)
 
-
+$SAMP = $ARGV[0];
+while($SAMP !~ /\w/){ print "Please indicate sample name. Example: perl Contig_Merge-Overlap.pl Control-1 \n"; $SAMP = $ARGV[0];}
+$SAMP =~ s/(^\s+|\s+$)//g;
+$SAMP =~ s/\s+/\_/g;
 
 #use File::Copy;
 #use warnings;
@@ -15,9 +18,9 @@ $percid = 1-$userpid;
 $incon = "dedup4.fa";
 $indot  = "graph4.dot";
 $prod   = "./prod_X.fa";
-$output = "MERGED_CONTIGS_NOSPLIT_Y.fa";
-$log	= "MERGED_CONTIGS_NOSPLIT_Y.log";
-$debug  = "MERGED_CONTIGS_NOSPLIT_Y.debug";
+$output = $SAMP."_MERGED_CONTIGS.fa";
+$log	= $SAMP."_MERGED_CONTIGS.log";
+$debug  = $SAMP."_MERGED_CONTIGS.debug";
 open(INCON, $incon)||die;
 open(INDOT, $indot)||die;
 open(OUTPUT, ">", $output)||die;
