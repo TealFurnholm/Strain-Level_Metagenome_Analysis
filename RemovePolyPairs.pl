@@ -2,36 +2,26 @@ use warnings;
 
 $input1 = $ARGV[0]; 
 $input2 = $ARGV[1];
-$output1 = $ARGV[2];
-$output2 = $ARGV[3];
+$minlen = $ARGV[2];
+$output1 = $ARGV[3];
+$output2 = $ARGV[4];
 
-if($input1 !~ /(\_1\_|fwd|for)/i){ print "Please specify forward read file with either _1_ or _fwd_ in the file name\n"; }
+if($input1 !~ /(\_1\_|fwd)/i){ print "Please specify forward read file with either _1_ or _fwd_ in the file name\n"; }
 if($input2 !~ /(\_2\_|rev)/i){ print "Please specify reverse read file with either _2_ or _rev_ in the file name\n"; }
 if($output1 !~ /\w/ || $output2 !~ /\w/ || $output1 eq $output2){ print "Please specify forward and reverse output file names\n"; }
 
-if($input1 =~ /(.*)[\-\_\.](1|fwd|for)[\-\_\.]/i){ $samp = $1; }
-else{ $input1 =~ /(.*?)\./; }
-print "on samp $samp\n";
-$debug = $samp."_debug.txt";
-
 if($input1 =~ /\.gz$/i){
 	open(INPUT1, "gunzip -c $input1 |") or die "gunzip $input1: $!";
-	open(INPUT2, "gunzip -c $input2 |") or die "gunzip $input2: $!";
+        open(INPUT2, "gunzip -c $input2 |") or die "gunzip $input2: $!";
 }
-else{
-	open(INPUT1, $input1)||die;
-	open(INPUT2, $input2)||die;
-}
+else{	open(INPUT1, $input1)||die; open(INPUT2, $input2)||die; }
 
 if($output1 =~ /\.gz$/i){
 	open(OUTPUT1,'>>:gzip', $output1)||die;
 	open(OUTPUT2,'>>:gzip', $output2)||die;
 }
-else{	
-	open(OUTPUT1, ">>", $output1)||die;
-	open(OUTPUT2, ">>", $output2)||die;
-}
-open(DEBUG, ">>", $debug)||die;
+else{	open(OUTPUT1, ">>", $output1)||die; open(OUTPUT2, ">>", $output2)||die; }
+
 
 $on=0;
 $badline=0;
@@ -167,32 +157,39 @@ while( my $line = <INPUT1> . <INPUT1> . <INPUT1> . <INPUT1> . <INPUT2> . <INPUT2
 
 
 	#OUTPUT READS
-        $stuff[0] =~ s/\@[^\:]+/\@SAMP$samp/;
-        $stuff[4] =~ s/\@[^\:]+/\@SAMP$samp/;
-		my $NFs = $stuff[1] =~ tr/Nn/NN/; my $NRs = $stuff[5] =~ tr/Nn/NN/;
-	if($kc1 < 7 && $kc2 < 7){														print DEBUG "$line"; next;} #both low entropy
-	elsif($NFs > length($stuff[1])*0.05 && $NRs > length($stuff[5])*0.05){			print DEBUG "$line"; next;} #both too many ambigs
-	elsif(length($stuff[1]) < 50 && length($stuff[5]) < 50){						print DEBUG "$line"; next;} #both too short
-    elsif($kc1 < 7 || $NFs > length($stuff[1])*0.05 || length($stuff[1]) < 50){  	#forward read bad
-		if($kc2 < 7 || $NRs > length($stuff[1])*0.05 || length($stuff[5]) < 50){	print DEBUG "$line"; next;} #both bad read in different ways
-		$out1 = "$stuff[0]\nA\n+\nI\n";
-		$out2 = "$stuff[4]\n$stuff[5]\n+\n$stuff[7]\n";
-		$revonly++;
+	my $NFs = $stuff[1] =~ tr/Nn/NN/; 
+	my $NRs = $stuff[5] =~ tr/Nn/NN/;
+	   if($kc1 < 7 && $kc2 < 7){													$lowent++; next;} #both low entropy
+	elsif($NFs > length($stuff[1])*0.05 && $NRs > length($stuff[5])*0.05){			$ambig++; next;} #both too many ambigs
+	elsif(length($stuff[1]) < $minlen && length($stuff[5]) < $minlen){				$short++; next;} #both too short
+	elsif($kc1 < 7 || $NFs > length($stuff[1])*0.05 || length($stuff[1]) < $minlen){#forward read bad
+	   if($kc2 < 7 || $NRs > length($stuff[1])*0.05 || length($stuff[5]) < $minlen){$mixed++; next;} #both bad
+	   $revgood++;
 	}
-	elsif($kc2 < 7 || $NRs > length($stuff[1])*0.05 || length($stuff[5]) < 50){ 	#reverse read bad
-		$out1 = "$stuff[0]\n$stuff[1]\n+\n$stuff[3]\n";
-		$out2 = "$stuff[4]\nA\n+\nI\n";
-		$foronly++;
+	elsif($kc2 < 7 || $NRs > length($stuff[1])*0.05 || length($stuff[5]) < $minlen){#reverse read bad
+	   if($kc1 < 7 || $NFs > length($stuff[1])*0.05 || length($stuff[1]) < $minlen){$mixed++; next;} #both bad
+	   $forgood++;
 	}
-	else{ 	
-		$out1 = "$stuff[0]\n$stuff[1]\n+\n$stuff[3]\n"; #both good reads
-		$out2 = "$stuff[4]\n$stuff[5]\n+\n$stuff[7]\n";
-		$good++;
-	}
+	else{$bothgood++;}
 
-	print OUTPUT1 "$out1";
-	print OUTPUT2 "$out2";
-	if($on%1000000==0){$time = localtime; print "on $on time $time tot $totreads good $good foronly $foronly revonly $revonly\n";} $on++;
+	$stuff[0]=~s/\s.*//;
+	$SEQS{$stuff[1]}{$stuff[5]}=$stuff[0];
+	$SCOS{$stuff[1]}=$stuff[3];
+	$SCOS{$stuff[5]}=$stuff[7];
+
+	if($on%1000000==0){$time = localtime; print "on $on time $time tot $totreads bothgood $bothgood forgood $forgood revgood $revgood bothlowent $lowent bothambig $ambig bothshort $short mixed $mixed\n";} 
+	$on++;
 }
 $end = localtime;
-print "on $on start $start end $end tot $totreads good $good foronly $foronly revonly $revonly\n";
+print "on $on start $start end $end minlen $minlen\n";
+print "tot $totreads bothgood $bothgood forgood $forgood revgood $revgood bothlowent $lowent bothambig $ambig bothshort $short mixed $mixed\n";
+
+
+foreach my $seq1 (keys %SEQS){
+	foreach my $seq2 (keys %{$SEQS{$seq1}}){
+		$nm1=$SEQS{$seq1}{$seq2}."_1";
+		$nm2=$SEQS{$seq1}{$seq2}."_2";
+		print OUTPUT1 "$nm1\n$seq1\n+\n$SCOS{$seq1}\n";
+		print OUTPUT2 "$nm2\n$seq2\n+\n$SCOS{$seq2}\n";
+	}
+}
