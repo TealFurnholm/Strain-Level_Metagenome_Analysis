@@ -1,6 +1,7 @@
-### Overview
-This pipeline is for paired short-read metagenome analysis. It uses a "universal database" and novel in-house scripts to create strain-level bins, as well as doing comprehensive linked community+functional primary and secondary analyses. 
-### Start here: https://github.com/TealFurnholm/Teals_Strain-Level_Metagenome_Pipeline/wiki.
+### OVERVIEW
+#### This pipeline is for paired short-read metagenome analysis.<br>
+It uses a "universal database" and novel in-house scripts to create strain-level bins, as well as doing comprehensive linked community+functional primary and secondary analyses. 
+## Begin: https://github.com/TealFurnholm/Teals_Strain-Level_Metagenome_Pipeline/wiki
 
 
 ### SOFTWARE REQUIREMENTS
