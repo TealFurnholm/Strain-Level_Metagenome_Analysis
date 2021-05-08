@@ -1,6 +1,7 @@
 ### OVERVIEW
 #### This pipeline is for paired short-read metagenome analysis.<br>
-It uses a "universal database" and novel in-house scripts to create strain-level bins, as well as doing comprehensive linked community+functional primary and secondary analyses. This pipeline analyses each sample separately, and if 
+It uses a "universal database" and novel in-house scripts to create strain-level bins, as well as doing comprehensive linked community+functional primary and secondary gene analyses. This pipeline analyses each sample separately, but there is a co-assembly option, and the binning process can be run with multiple samples.
+### Start Here: https://github.com/TealFurnholm/Teals_Strain-Level_Metagenome_Pipeline/wiki
 
 ### Requirements
  ** You should be doing this in a unix/linux shell environment, not Windows, unless you want to install a VM. We use a container called "comics" on our system, so you will need to change "comics" to whatever your specific system call is for the various software. We also have a 96 core system, of which I usually use 20 or 40 threads (excep the perl scripts only use 1) and a few hundred GB of RAM.
@@ -28,4 +29,3 @@ test_1<br>
 test_2<br>
 test_3<br>
 
-## Begin: https://github.com/TealFurnholm/Teals_Strain-Level_Metagenome_Pipeline/wiki
