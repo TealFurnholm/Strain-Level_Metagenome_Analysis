@@ -5,7 +5,7 @@ $input2 = $ARGV[1];
 $output1 = $ARGV[2];
 $output2 = $ARGV[3];
 $log = $output1;
-$log =~ s/\_*(fwd|for|1\_).*?$/\.log/i;
+$log =~ s/\_*(fwd|for|1\_).*?$/_dedup.log/i;
 open(LOG, ">", $log)||die;
 
 
