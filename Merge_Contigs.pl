@@ -1,3 +1,5 @@
+#use warnings;
+
 #BEFORE YOU BEGIN
 #USE bbtools dedupe to remove containments and duplicates and orient the sequences into overlaps
    #   comics dedupe in=multi_assembly_contigs.fasta out=dedup.fasta tuc mid=99 e=2 minscaf=200 fo mo=200 c pc=t cc=t fcc=t fmj=t absorbcontainment=t numaffixmaps=3 overwrite=t
@@ -6,25 +8,26 @@
 #the .dot file outputs based on input contigs and will not keep contig names if you cluster (bug in dedupe)
 
 
-
-#use File::Copy;
-#use warnings;
-$userpid = 0.995;
-$percid = 1-$userpid;
 $sample = $ARGV[0];
-$sample =~ s/\s+//;
+$sample =~ s/\s+//g;
+
+$mid=$ARGV[1];
+$mid =~ s/\D+//g;
+if($mid !~/\d\d/){ print "need to add %identity: perl Merge_ContigsY.pl sample 95 \n"; die;}
+$userpid = $mid/100;
+$percid = 1-$userpid; #edit distance
+
 
 $incon  = $sample."_dedup4.fa";
 $indot  = $sample."_graph4.dot";
 $prod   = $sample."_prod_X.fa";
 $output = $sample."_MERGED_CONTIGS.fa";
 $log    = $sample."_MERGED_CONTIGS.log";
-$debug  = $sample."_MERGED_CONTIGS.debug";
-open(INCON, $incon)||die;
-open(INDOT, $indot)||die;
+$starttime = localtime;
+open(INCON, $incon)||die "unable to open $incon: $!\n";
+open(INDOT, $indot)||die "unable to open $indot: $!\n";
 open(OUTPUT, ">", $output)||die;
 open(LOG, ">", $log)||die;
-open(DEBUG, ">", $debug)||die;
 
 
 #FIRST: GET OVERLAP INFO AND SEQ IDS
@@ -32,185 +35,265 @@ $on=0;
 $max=0;
 $totseqlen=0;
 $/=">";
+print "INPUT CONTIGS $starttime\n";
 while(<INCON>){
         if($_ !~ /\w/){next;}
         $on++;
         $_ = uc($_);
         @stuff = split("\n",$_);
         $header = shift(@stuff);
-        $header =~ /(CLUSTER\_(\d+)\,CONTIG\_(\d+))/;
+        $header =~ /(CLUSTER\_(\d+)\,CONTIG\_\d+)/;
         $contig = $1;
         $cluster = $2;
-        $connum = $3;
+
         $seq = join("", @stuff);
         $seq =~ s/[^A-Z]//g;
-        $ID2SEQ{$cluster}{$connum}=$seq;
         $CON2SEQ{$contig}=$seq;
         $ALLSEQS{$seq}=$cluster;
-        $NAME{$seq}= "CLUSTER-".$cluster."_".$connum;
+        $NAME{$seq}=$contig;
+        $CLUC{$cluster}=1;
+
         $totseqlen+=length($seq);
         if(length($seq)>$max){$max=length($seq);}
 }
-$sc = keys %NAME;
-$ckc = keys %ID2SEQ;
+$sc = keys %ALLSEQS;
+$ckc = keys %CLUC;
 $avglen = $totseqlen/$on;
-print    "contigs:\t$on\ndistinct:\t$sc\nlongest:\t$max\naverage:\t$avglen\ntotallen:\t$totseqlen\nclusters:\t$ckc\n";
+print     "contigs:\t$on\ndistinct:\t$sc\nlongest:\t$max\naverage:\t$avglen\ntotallen:\t$totseqlen\nclusters:\t$ckc\n";
 print LOG "contigs:\t$on\ndistinct:\t$sc\nlongest:\t$max\naverage:\t$avglen\ntotallen:\t$totseqlen\nclusters:\t$ckc\n";
+
 
 
 
 #GET OVERLAPS
 $/="\n";
+$time = localtime;
+print "INPUT OVERLAP INFO $time\n";
 open(INDOT, $indot)||die;
 while(<INDOT>){
         if($_ !~ /\-\>/){next;}
         $_ = uc($_);
-        $line=$_;
         $_ =~ /.*(CLUSTER\_(\d+)\S+)\s.*(CLUSTER\S+)\s.*\=\"(.+)\"/i;
-        $con1 = $1;
+        $contig1 = $1;
         $cluster = $2;
-        $con2 = $3;
+        $contig2 = $3;
         @stuff = split(",",$4);
-        $seq1 = $CON2SEQ{$con1}; if($seq1 !~ /^[A-Z]+$/){ print DEBUG "INDOT: $con1 no matching seq in fasta line $line \n"; die; }
-        $seq2 = $CON2SEQ{$con2}; if($seq2 !~ /^[A-Z]+$/){ print DEBUG "INDOT: $con2 no matching seq in fasta line $line \n"; die; }
+        $seq1 = $CON2SEQ{$contig1};
+        $seq2 = $CON2SEQ{$contig2};
         $s1len = length($seq1)-1;
         $s2len = length($seq2)-1;
-        #$type = $stuff[0];
         $olen = $stuff[1];
         $edit = $stuff[2];
-        $maxbad = $olen*$percid;
-        if($edit > $maxbad){ $toobad++; next; }
 
+        #screen out bad overlaps
+        $maxbad = $olen*$percid;
+        if($edit > $maxbad){next;}
+        if($stuff[4] !=0 && $stuff[6] !=0 && $stuff[5] !=0 && $stuff[7] !=0 ){ $NO{$cluster}=1; next; }
+        if($stuff[4] >= $stuff[5] || $stuff[6] >= $stuff[7]){ $NO{$cluster}=1; next; } #reverse_dir
+        if($stuff[4] == 0 && $stuff[5] == $s1len){ $NO{$cluster}=1; next; } #containment
+        if($stuff[6] == 0 && $stuff[7] == $s2len){ $NO{$cluster}=1; next; } #containment
+
+        #orient so it is always head (end of first seq) tail (start of second seq) overlap position
         if($stuff[4] < $stuff[6] && $stuff[5] < $stuff[7]){
-                $CLUSTERS{$cluster}{$seq2}{$seq1}=$stuff[6]."|".$stuff[7]."|".$s1len."|".$stuff[4]."|".$stuff[5]."|".$s2len."|".$edit."|".$olen;
+                $CLUSTERS{$cluster}{$seq2}{$seq1}=$stuff[6]."|".$stuff[7]."|".$s2len."|".$stuff[4]."|".$stuff[5]."|".$s1len."|".$edit."|".$olen;
+                print "cluster $cluster seq2>seq1 $CLUSTERS{$cluster}{$seq2}{$seq1}\n";
                 $KEEP{$cluster}{$seq1}++; $KEEP{$cluster}{$seq2}+=0;
                 $ML{$seq1}=1; $ML{$seq2}=1;
         }
         elsif($stuff[4] > $stuff[6] && $stuff[5] > $stuff[7]){
                 $CLUSTERS{$cluster}{$seq1}{$seq2}=$stuff[4]."|".$stuff[5]."|".$s1len."|".$stuff[6]."|".$stuff[7]."|".$s2len."|".$edit."|".$olen;
+                print "cluster $cluster seq1>seq2 $CLUSTERS{$cluster}{$seq1}{$seq2}\n";
                 $KEEP{$cluster}{$seq2}++; $KEEP{$cluster}{$seq1}+=0;
                 $ML{$seq1}=1; $ML{$seq2}=1;
         }
-        else{ $notoverlap++; next; }
+        else{ $NO{$cluster}=1; next; }
 }
 $ckc = keys %CLUSTERS;
+$nkc = keys %NO;
 $skc = keys %ML;
-
-print LOG "toobad $toobad nooverlap $notoverlap olclusters $ckc olseqs $skc\n";
-print    "toobad $toobad nooverlap $notoverlap olclusters $ckc olseqs $skc\n";
+print LOG "not overlapped clusters $nkc ol clusters $ckc olseqs $skc\n";
+print     "not overlapped clusters $nkc ol clusters $ckc olseqs $skc\n";
 undef(%CON2SEQ);
+undef(%NO);
 
 
-
-#OUTPUT SEQS WITHOUT ANY OVERLAPS
+##############################################
+#######    OUTPUT SEQS W/O OVERLAPS    #######
+##############################################
 $cntout=0;
-open(OUTPUT, ">>", $output)||die;
-open(LOG, ">>", $log)||die;
+$time = localtime;
+$sakc = keys %ALLSEQS;
+print "OUTPUT NON-OVERLAPPING CONTIGS\n";
 foreach my $seq (sort(keys %ALLSEQS)){
         if(!exists($ML{$seq})){
                 $cntout++;
-                print LOG "type 1 $NAME{$seq}\n";
-                print OUTPUT ">$NAME{$seq}\n$seq\n";
+                $name = $NAME{$seq};
+                $name=~s/[^\d\_\|]+//g;
+                $name=~s/^\_|\_$//g;
+                print OUTPUT ">CLUSTER:$name\n$seq\n";
+                delete($CON2SEQ{$NAME{$seq}});
                 delete($ALLSEQS{$seq});
-                delete($ID2SEQ{$ALLSEQS{$seq}});
                 delete($NAME{$seq});
         }
 }
 $akc = keys %ALLSEQS;
 undef(%ML);
-print LOG "output $cntout unoverlaped contigs, there are $akc contigs remaining to be merged\n";
-print "output $cntout unoverlaped contigs, there are $akc contigs remaining to be merged\n";
+print LOG "total contigs $sakc, output $cntout unoverlaped contigs, there are $akc contigs remaining to be merged\n";
+print     "total contigs $sakc, output $cntout unoverlaped contigs, there are $akc contigs remaining to be merged\n";
+##############################################
+##############################################
+##############################################
 
 
 
-#THIRD: FOR EACH CLUSTER - MERGEOVERLAP
+
+
+
+##############################################
+#########    MERGEOVERLAP CLUSTERS   #########
+##############################################
 print "looping through clusters\n";
-open(OUTPUT, ">>", $output)||die;
-open(LOG, ">>", $log)||die;
 $on=0;
 $totclust = keys %CLUSTERS;
-$starttime = localtime;
+$time = localtime;
 foreach my $cluster (sort{$CLUSTERS{$a} <=> $CLUSTERS{$b}} keys %CLUSTERS){
-
-        $time = localtime;
-        if($on%100000==0){print "cluster $cluster on $on of $totclust start $starttime time $time perfect $perfol prodigal $prodol\n";}
-        $on++;
 
         #### ~ SCREEN %KEEP FOR HEADS ~ ####
         $min=100000000; %HEADS=();
         foreach my $seq (sort{$KEEP{$cluster}{$a} <=> $KEEP{$cluster}{$b}} keys %{$KEEP{$cluster}}){
                 if($KEEP{$cluster}{$seq} < $min ){ $min = $KEEP{$cluster}{$seq}; }
-                if($KEEP{$cluster}{$seq}==$min){$HEADS{$seq}=1;}
+                if($KEEP{$cluster}{$seq}==$min){push(@HEADS,$seq);}
                 else{last;}
         }
-        $sthedkc = keys %HEADS;
+        $sthedkc = @HEADS;
+        $CLHC{$sthedkc}++;
+        print "cluster $cluster heads $sthedkc\n";
 
-       #### ~  MERGE ALL OVERLAPS ~ ####
-        %DONE=();
-        while(keys %HEADS > 0){
-                foreach my $seqx (keys %HEADS){
-                        my @SEQ1 = split("",$seqx);
-                        $NAME{$seqx} =~ /(\d+)$/; #grab end contig number
-                        $id = $1;
-                        $seq1 = $ID2SEQ{$cluster}{$id};
-                        $f1=0;
-                        foreach my $seq2 (keys %{$CLUSTERS{$cluster}{$seq1}}){
-                                my @SEQ2 = split("",$seq2);
-                                $NAME{$seq2} =~ /(\d+)$/; #grab contig number
-                                $id2 = $1;
+        #### ~ EXTEND FROM HEADS ~ ####
+        while($HEADS[0]=~/\w/){
+                $head=shift(@HEADS);
+                $name=$NAME{$head};
+                $name=~s/[^\d\_\|ab]+//g;
+                $name=~s/^\_|\_$//g;
+                @HEAD=split("",$head);
+                print "cluster $cluster head $NAME{$head}\n";
+                foreach my $tail (keys %{$CLUSTERS{$cluster}{$head}}){
+                        $name2=$NAME{$tail};
+                        $name2=~s/[^\d\_\|ab]+//g;
+                        $name2=~s/^\_|\_$//g;
+                        @TAIL=split("",$tail);
 
-                                #GET OVERLAP - 726|1419|1419|0|693|739|1|694
-                                $regex1 = $CLUSTERS{$cluster}{$seq1}{$seq2};
-                                $regex1 =~ /^(\d+)\|(\d+)\|(\d+)\|(\d+)\|(\d+)\|(\d+)\|(\d+)\|(\d+)/;
-                                $for = $4; $fiv = $5; $six = $6; $olr = $8;
-                                $tre = $#SEQ1; $two = $#SEQ1; $one = $tre-$olr+1;
+                        $regex=$CLUSTERS{$cluster}{$head}{$tail};
+                        $regex =~ /^(\d+)\|(\d+)\|(\d+)\|(\d+)\|(\d+)\|(\d+)\|(\d+)\|(\d+)/;
+                        $headstol=$1; $headeol=$2;
+                        $tailstol=$4; $taileol=$5;
 
-                                #CHECK BEST CONSERVED AND MERGE
-                                if($one > 0){$header = join('', @SEQ1[0..$one-1]);} else{$header = '';}
-                                $mid1 = join('', @SEQ1[$one..$two]);
-                                $mid2 = join('', @SEQ2[$for..$fiv]);
-                                if($fiv < $six){$trailer = join('', @SEQ2[$fiv+1..$six]);} else{$trailer = '';}
-                                $ns1 = $header.$mid1.$trailer;
-                                $ns2 = $header.$mid2.$trailer;
+                        if($headstol>0){$header=join("",@HEAD[0..$headstol-1]);}  else{$header='';}
+                        if($taileol < $#TAIL){$tailer=join("",@TAIL[$taileol+1..$#TAIL]);}  else{$tailer='';}
+                        $mid1=join("",@HEAD[$headstol..$headeol]);
+                        $mid2=join("",@TAIL[$tailstol..$taileol]);
 
 
-                                #IF OL IS PERFECT, ELSE KEEP BOTH
-                                if($mid1 eq $mid2){$perfol++; $NAME{$ns1} = $NAME{$seqx}."|".$id2; $HEADS{$ns1}=1; if(keys %{$CLUSTERS{$cluster}{$seq2}} < 1){$DONE{$ns1}=$NAME{$ns1};}}
-                                else{   $prodol++;
-                                        $NAME{$ns1} = $NAME{$seqx}."|a".$id2; $HEADS{$ns1}=1;
-                                        $NAME{$ns2} = $NAME{$seqx}."|b".$id2; $HEADS{$ns2}=1;
-                                        if(keys %{$CLUSTERS{$cluster}{$seq2}} < 1){$DONE{$ns1}=$NAME{$ns1}; $DONE{$ns2}=$NAME{$ns2};}
-                                }
-                                $f1=1;
-                                delete($ALLSEQS{$seq1}); #makes sure we know which contigs really got merged
-                                delete($ALLSEQS{$seq2});
+                        @NEW=(); @NNS=();
+                        if($mid1 eq $mid2){
+                                $ns1 = $header.$mid1.$tailer; push(@NEW, $ns1);
+                                $nn1 = $name."|".$name2; push(@NNS, $nn1);
                         }
-                        if($f1==0){ $DONE{$seqx}=$NAME{$seqx};} #were no more tails to merge
-                        delete($HEADS{$seqx}); #EITHER HAD OVERLAP SO IS NOW A NEW HEAD OR NO OVERLAP SO IS DONE = DELETE
+                        else{   $ns1 = $header.$mid1.$tailer; push(@NEW, $ns1);
+                                $nn1 = $name."|".$name2."a";  push(@NNS, $nn1);
+                                $ns2 = $header.$mid2.$tailer; push(@NEW, $ns2);
+                                $nn2 = $name."|".$name2."b";  push(@NNS, $nn2);
+                        }
+
+                        print "cluster $cluster nn1 $nn1 nn2 $nn2 regex $CLUSTERS{$cluster}{$head}{$tail}\n";
+
+                        #check if more tails to add to current tail
+                        if(exists($CLUSTERS{$cluster}{$tail})){
+                                foreach my $t2 (keys %{$CLUSTERS{$cluster}{$tail}}){
+                                        for my $x (0..$#NEW){
+                                                $nx=$NEW[$x];
+                                                $nn=$NNS[$x];
+                                                push(@HEADS,$nx);  #new seq is a head
+                                                $NAME{$nx}=$nn;
+                                                #make new head/tail in %CLUSTERS
+                                                #since new seq ends with current tail, set regex to current tail and next tail
+                                                $CLUSTERS{$cluster}{$nx}{$t2}=$CLUSTERS{$cluster}{$tail}{$t2};
+                                        }
+                                }
+                        }
+                        else{   #nothing more to add to these sequences, they are done
+                                for my $x (0..$#NEW){
+                                        $nx=$NEW[$x]; $nn=$NNS[$x];
+                                        print "done $nn\n";
+                                        $DONE{$nx}=$nn;
+                                }
+                        }
+                        delete($CLUSTERS{$cluster}{$head}{$tail}); #get rid of done seq in %CLUSTERS
                 }
+                delete($CLUSTERS{$cluster}{$head});
         }
-
-        #OUTPUT MERGED SEQS
-        $dkc = keys %DONE;
-        foreach my $seq (keys %DONE){
-                $name = $NAME{$seq};
-                print OUTPUT ">$name\n$seq\n";
-                print LOG "cluster $cluster type:2 start:$skc heads:$sthedkc merged:$dkc final $name\n";
-        }
-        delete($KEEP{$cluster});
-        delete($CLUSTERS{$cluster});
-        delete($ID2SEQ{$cluster});
-}
-
-$akc = keys %ALLSEQS;
-print "total $akc unprocessed contigs remaining after merge\nperfect-ol $perfol\nbranches $prodol\n";
-print LOG "total $akc unprocessed contigs remaining after merge\nperfect-ol $perfol\nbranches $prodol\n";
-foreach my $seq (keys %ALLSEQS){
-        print OUTPUT ">$NAME{$seq}\n$seq\n";
-        print LOG "$NAME{$seq} type:4 residual unmerged for debug\n";
 }
 
 
+
+$dkc = keys %DONE;
+foreach my $seq (keys %DONE){
+        $name = $DONE{$seq};
+        $name=~s/[^\d\_\|]+//g;
+        $name=~s/^\_|\_$//g;
+        $PROD_FIX{$name}{$seq}=$DONE{$seq};
+}
+
+$on=0;
+$tbf = keys %PROD_FIX;
+foreach my $ns (keys %PROD_FIX){
+        $on++;
+        $kc = keys %{$PROD_FIX{$ns}};
+        print "on $on of $tbf kc $kc\n";
+        if($kc < 2){next;}
+        %CONF=();
+        %COMP=();
+        %NLEN=();
+        foreach my $seq (keys %{$PROD_FIX{$ns}}){
+                my ($conf, $compl, $nlen) = do_prodigal($seq);
+                $CONF{$seq}=$conf;
+                $COMP{$seq}=$compl;
+                $NLEN{$seq}=$nlen;
+        }
+        $mxconf=0; $mxcomp=0; $mxnlen=0;
+        foreach my $seq (sort{$COMP{$b}<=>$COMP{$a} || $NLEN{$b}<=>$NLEN{$a} || $CONF{$b}<=>$CONF{$a}} keys %COMP){
+                print "$ns name $DONE{$seq} conf $CONF{$seq} comp $COMP{$seq} nlen $NLEN{$seq}\n";
+                if($COMP{$seq}>$mxcomp && $NLEN{$seq}>$mxnlen){ $mxconf=$CONF{$seq}; $mxcomp=$COMP{$seq}; $mxnlen=$NLEN{$seq};}
+                if($NLEN{$seq}>=$mxnlen && $COMP{$seq}>=$mxcomp && $CONF{$seq}>=$mxconf){next;}
+                else{delete($DONE{$seq});}
+        }
+}
+
+$dkc_red = keys %DONE;
+foreach my $seq (keys %DONE){
+        $name = $DONE{$seq};
+        @mj = ( $name =~ /[ab]/g );
+        $mj = @mj;
+        $MULTIMID{$mj}++;
+        @ol = ( $name =~ /\|/g );
+        $ol=@ol;
+        $SOLC{$ol}++;
+
+        print OUTPUT ">CLUSTER:$name\n$seq\n";
+        print LOG "type 2\tCLUSTER:$name\n";
+}
+
+foreach my $x (sort(keys %CLHC)){print "cluster hc $x\t$CLHC{$x}\n";}
+foreach my $x (sort(keys %MULTIMID)){print "MULTIMID $x\t$MULTIMID{$x}\n";}
+foreach my $x (sort(keys %SOLC)){print "multiol $x\t$SOLC{$x}\n";}
+
+foreach my $x (sort(keys %CLHC)){       print LOG "cluster hc $x\t$CLHC{$x}\n";}
+foreach my $x (sort(keys %MULTIMID)){   print LOG "MULTIMID $x\t$MULTIMID{$x}\n";}
+foreach my $x (sort(keys %SOLC)){       print LOG "multiol $x\t$SOLC{$x}\n";}
+print "total clusters to be overlapped: $totclust\n";
+print "initial donemerge seqs: $dkc\n";
+print "total mergealts: $tbf\n";
+print "final donemerge seqs: $dkc_red\n";
 
 
 
@@ -234,7 +317,6 @@ sub do_prodigal{
         }
         return($conf, $compl, $nlen);
 }
-
 
 
 
