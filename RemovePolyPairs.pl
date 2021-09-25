@@ -158,7 +158,6 @@ while( my $line = <INPUT1> . <INPUT1> . <INPUT1> . <INPUT1> . <INPUT2> . <INPUT2
         else{$bothgood++;}
 
 
-
         $SEQS{$stuff[1]}{$stuff[5]}=$read;
         $SCOS{$stuff[1]}=$stuff[3];
         $SCOS{$stuff[5]}=$stuff[7];
@@ -189,5 +188,3 @@ foreach my $seq1 (sort(keys %SEQS)){
 $end = localtime;
 print LOG "$input1 $output1 on $on start $start end $end minlen $minlen tot $totreads totout $totout ";
 print LOG "noname $nn dup $dup bothgood $bothgood forgood $forgood revgood $revgood bothlowent $lowent bothambig $ambig bothshort $short mixed $mixed blr $blr brr $brr\n";
-
-
