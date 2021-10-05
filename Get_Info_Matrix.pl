@@ -2,25 +2,36 @@
 #THIS SCRIPT IS FOR USE WITH DIAMOND ALIGNED NGS SEQUENCING READS DESCRIBED HERE:
 
 
-#FILES LIST
-$indiam = $ARGV[0];
-$samp = $ARGV[1];
+#GET FILES
+$uin = join(" ", @ARGV);
+if($uin =~ /\-d\s+(\S+)/){$dir = $1;}else{$dir="/";}
+if($dir !~ /\/$/){$dir.="/";}
+if($uin =~ /\-s\s+(\S+)/){$samp = $1;}else{$samp='';}
 
+if($dir !~ /./ || $samp !~/\w/){ print "You must specify the:\n\t-d /path/to/reference/database/files/ \n\t-s sample_prefix \n";}  
 
-$infn    = '/geomicro/data22/teals_pipeline/Function_Names.txt';
-$intax   = '/geomicro/data22/teals_pipeline/TAXONOMY_DB_2020.txt';
-$ininfo  = $samp.'_URDB.txt.gz';
+opendir(DIR, $dir) or die "Could not open $dir\n";
+@FILES = grep(/TAXONOMY\_DB.*\.txt/i, readdir DIR);
+$intax=$dir.$FILES[0]; @FILES = ();
 
-open(INFN, $infn)||die;
-open(INDI, $indiam)||die;
-open(INTAX, $intax)||die;
-if( -e $ininfo && -s $ininfo){ open(ININFO, "gunzip -c $ininfo |")||die; }
-else{   print "First Time, looping through the URDB\n";
-        $ininfo = '/geomicro/data22/teals_pipeline/URDB_MAY_2019.txt.gz';
-        $outinfo = $samp."_URDB.txt.gz";
-        open(ININFO, "gunzip -c $ininfo |") or die "problem open gunzip $ininfo: $!";
-        open(OUTINFO, '>:gzip', $outinfo)||die;
-}
+opendir(DIR, $dir) or die "Could not open $dir\n";
+@FILES = grep(/UNIREF100_INFO.*\.txt/i, readdir DIR);
+$ininfo=$dir.$FILES[0]; @FILES = ();
+
+opendir(DIR, $dir) or die "Could not open $dir\n";
+@FILES = grep(/Function_Names.*\.txt/i, readdir DIR);
+$infn=$dir.$FILES[0]; @FILES = ();
+
+opendir(DIR, $dir) or die "Could not open $dir\n";
+@FILES = grep(/$samp.*\.m8$/i, readdir DIR);
+$indiam=$dir.$FILES[0]; @FILES = ();
+open(INDI, $indiam)||die "unable to open indim $indiam the .m8 diamond alignment for sample $samp.\n";
+
+open(INTAX, $intax)||die "Cant find $intax in $dir. Please make sure $dir contains taxonomy database: https://github.com/TealFurnholm/Universal-Taxonomy-Database\n"; 
+open(INFN, $infn)||die "Cant find $infn in $dir. Please make sure $dir contains function names file: https://github.com/TealFurnholm/Universal_Biological_Compounds_Database/wiki \n"; die;}
+if( $ininfo =~/\.gz$/){ open(ININFO, "gunzip -c $ininfo |") or die "Cant find $ininfo in $dir. Please make sure $dir contains uniref100 info: https://github.com/TealFurnholm/Universal_Microbiomics_Alignment_Database \n";}
+else{ 	open(ININFO, $ininfo) or die "Cant find $ininfo in $dir. Please make sure $dir contains uniref100 info: https://github.com/TealFurnholm/Universal_Microbiomics_Alignment_Database \n";}
+
 
 #OUTPUT FILES
 $outlog  = $samp.".log";
