@@ -5,10 +5,9 @@
 #GET FILES
 $uin = join(" ", @ARGV);
 if($uin =~ /\-d\s+(\S+)/){$dir = $1;}else{$dir="/";}
-if($dir !~ /\/$/){$dir.="/";}
 if($uin =~ /\-s\s+(\S+)/){$samp = $1;}else{$samp='';}
-
 if($dir !~ /./ || $samp !~/\w/){ print "You must specify the:\n\t-d /path/to/reference/database/files/ \n\t-s sample_prefix \n";}  
+if($dir !~ /\/$/){$dir.="/";}
 
 opendir(DIR, $dir) or die "Could not open $dir\n";
 @FILES = grep(/TAXONOMY\_DB.*\.txt/i, readdir DIR);
@@ -22,15 +21,15 @@ opendir(DIR, $dir) or die "Could not open $dir\n";
 @FILES = grep(/Function_Names.*\.txt/i, readdir DIR);
 $infn=$dir.$FILES[0]; @FILES = ();
 
+open(INTAX, $intax)||die "Cant find $intax in $dir. Please make sure $dir contains taxonomy database: https://github.com/TealFurnholm/Universal-Taxonomy-Database\n"; 
+open(INFN, $infn)||die "Cant find $infn in $dir. Please make sure $dir contains function names file: https://github.com/TealFurnholm/Universal_Biological_Compounds_Database/wiki \n"; die;}
+if( $ininfo =~/\.gz$/){ open(ININFO, "gunzip -c $ininfo |") or die "Cant find $ininfo in $dir. Please make sure $dir contains uniref100 info: https://github.com/TealFurnholm/Universal_Microbiomics_Alignment_Database \n";}
+else{ open(ININFO, $ininfo) or die "Cant find $ininfo in $dir. Please make sure $dir contains uniref100 info: https://github.com/TealFurnholm/Universal_Microbiomics_Alignment_Database \n";}
+
 opendir(DIR, $dir) or die "Could not open $dir\n";
 @FILES = grep(/$samp.*\.m8$/i, readdir DIR);
 $indiam=$dir.$FILES[0]; @FILES = ();
 open(INDI, $indiam)||die "unable to open indim $indiam the .m8 diamond alignment for sample $samp.\n";
-
-open(INTAX, $intax)||die "Cant find $intax in $dir. Please make sure $dir contains taxonomy database: https://github.com/TealFurnholm/Universal-Taxonomy-Database\n"; 
-open(INFN, $infn)||die "Cant find $infn in $dir. Please make sure $dir contains function names file: https://github.com/TealFurnholm/Universal_Biological_Compounds_Database/wiki \n"; die;}
-if( $ininfo =~/\.gz$/){ open(ININFO, "gunzip -c $ininfo |") or die "Cant find $ininfo in $dir. Please make sure $dir contains uniref100 info: https://github.com/TealFurnholm/Universal_Microbiomics_Alignment_Database \n";}
-else{ 	open(ININFO, $ininfo) or die "Cant find $ininfo in $dir. Please make sure $dir contains uniref100 info: https://github.com/TealFurnholm/Universal_Microbiomics_Alignment_Database \n";}
 
 
 #OUTPUT FILES
@@ -47,22 +46,23 @@ open(OUTFUNC,">",$outfunc)||die;
 #INPUT TAXONOMY
 print "INPUT TAXONOMY\n";
 while(<INTAX>){
-        $_=uc($_);
-        if($_ !~ /\w/){next;}
-        @stuff = split("\t", $_,-1);
-        $stuff[$#stuff]=~ s/[\n\r\;]+//g;
-        $tid = shift(@stuff);
-        $PHY{$tid}=join(";",@stuff);
-	if($tid=~/00000$/){ print "tid $tid lin $PHY{$tid}\n";}
+	if($_ !~ /\w/){next;}
+	$_ =~ s/[\r\n]//;
+	$_=uc($_);
+	@stuff = split("\t", $_, -1);
+	$tid =  shift(@stuff);
+	$lin = join(";",@stuff);
+	$PHY{$tid}=$lin;
+	if(!exists($LIN_TID{$lin})){$LIN_TID{$lin}=$tid;}
 }
 
 print "INPUT FUNCTION NAMES\n";
 while(<INFN>){
-        if($_ !~ /\w/){next;}
-        $_=uc($_);
-        $_=~s/[\r\n]+//;
-        (my $id, my $name)=split("\t",$_,-1);
-        $id=~s/\s//g;
+	if($_ !~ /\w/){next;}
+	$_=uc($_);
+	$_=~s/[\r\n]+//;
+	(my $id, my $name)=split("\t",$_,-1);
+	$id=~s/\s//g;
         $FUNC2NAME{$id}=$name;
 }
 
@@ -70,13 +70,20 @@ while(<INFN>){
 #DIAMOND MATCHES
 print "INPUT DIAMOND MATCHES\n";
 while(<INDI>){
-    	$_=uc($_);
-    	$_=~s/[\r\n\>\@]//g;
-    	@stuff=split("\t",$_, -1);
+	if($_ !~ /\w/){next;}
+	$_=uc($_);
+	$_=~s/[\r\n]+//;
+	@stuff=split("\t",$_,-1);
+	$gene = $stuff[0];
+	$hit  = $stuff[2];
+	$pid  = $stuff[9];
+	if($pid < $minid){next;}
+	$cov  = $stuff[11];
+	if($cov < $mincov){next;}
+	$sco  = $pid*$cov;
+	
 	$read = $stuff[0];
     	$hit = $stuff[2];
-    	$hit =~ s/\_R//;
-    	$HIT_LEN{$hit}=$stuff[3];
     	$sco = $stuff[9]*$stuff[11];
 	$READ_HITS{$read}{$hit}=$sco;
 	$GENE_HITS{$hit}{$read}=$sco;
