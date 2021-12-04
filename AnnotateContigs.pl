@@ -1,34 +1,181 @@
-use warnings;
+#use warnings;
 use Statistics::Basic qw(:all nofill);
+
+########################################################################
+##########                      BEGIN                      #############
+########################################################################
+$argv=join(" ", @ARGV);
 $time = localtime;
 $time = uc($time);
 $time =~ /^[A-Z]+\s+([A-Z]+)\s+\S+\s+\S+\s+(\d\d\d\d)/;
-$month = $1; $year = $2;
+$month=$1; $year=$2;
 $version=$1."_".$2;
+$log=$samp."_AnalyzeContigs_".$version.".log";
+open(LOG, ">", $log)||die;
 
+########################################################################
+##########      GIVE INSTRUCTIONS IF NEEDED     #######################
 $argv = join(" ", @ARGV);
-if($argv !~ /\w/){
+if($argv !~ /\w/ || $argv =~ /(^\-h|^\-help|\s\-h)/){
+        print "\n\nPlease follow the instructions on GitHub:\n";
+        print "\t1. construct UMRAD starting here -> https://github.com/TealFurnholm/Universal-Taxonomy-Database \n";
+        print "\t2. run the metagenome through the pipeline, here -> https://github.com/TealFurnholm/Strain-Level_Metagenome_Analysis/wiki \n\n";
+        print "Required sample data include:\n";
+        print "(This script assumes you are running it where these sample data are.)\n";
+        print "\t1. The gene or protein sequences:                      [sample]_GENES.fna\n";
+        print "\t2. The alignment file of the sequences to UMRAD:       [sample]_GENES.m8 \n";
+        print "\t3. The rpkm file for reads aligned to the genes:       [sample]_READSvsGENES.rpkm\n";
+        print "\t4. The rpkm file for reads aligned to the contigs:     [sample]_READSvsCONTIGS.rpkm\n";
+        print "\t5. The sample contigs sequences:                       [sample]_MCDD.fa\n\n";
+        print "HOW TO USE ...\n";
         print "You must specify the following: \n";
-        print "\t-d /path/to/reference_databases/files/ \n";
+        print "\t-d /path/to/UMRAD_reference/files/ \n";
         print "\t-s the_sample_prefix\n";
-        print "\t-i /path/to/your/alignment/m8/files/ (if current directory, you can ignore this flag)\n";
-        print "\tEx. for Samp_1234_PROTS.m8 in this directory -d ~/Ref_DBs/ -i ../ALIGNMENTS/ -s Samp_1234 \n";
-        print "\tThe script uses the taxonomy, function names, and UniRef100 databases. See my GitHub for details\n";
-        print "You can optionally specify the:\n";
+        print "\nEx: perl AnalyzeContigs.pl -s Control_Day_1 -d /reference_files/UMRAD/ \n\n";
+        print "USER OPTIONS:\n";
         print "\t-c \t Minimum \% query coverage (default -c=70)\n";
-        print "\t-m \t Minimum \% identity alignment (default -m=40)\n";
+        print "\t-m \t Minimum \% identity alignment (default -m=50)\n";
         print "\t-x \t Minimum number of genes to keep cellular organisms (default -x=3). Note: does not include viruses or plasmids\n";
-        print "\t-k \t Top score margin, between 0 and 1. \n";
+        print "\t-k \t Top score margin, between 0 and 1. (default 0.9)\n";
+        print "\t-n \t Minimum number of model genomes for functional models. Use 3 or greater (for averaging). \n";
+        print "\t   \t More may result in lower rank/less specific model. (default 5)\n";
         print "\t\t Scores are \%identity x \%coverage (max possible score is 100x100=10000).\n";
         print "\t\t The -k margin keeps hits where: hit score >= top_score x [margin].\n";
         print "\t\t ex: 10000 x 0.75 = keep all hits with score >= 7500\n";
-        print "\t\t Top score hits only = 1. Ignore hit scores = 0. (default = 0.75)\n\n";
+        print "\t\t For top score hits only = 1. To ignore hit scores = 0. (default = 0.75)\n\n";
         print "These options allow that the reference database may not have your sample's strains, just various relatives with mixed gene orthology\n";
         print "Lower stringency helps stop false negatives. Higher helps increase speed and reduce noise/false positives.\n";
         print "Many Excess/spurious hits and species are screened out later in the script.\n\n\n";
         die;
 }
+########################################################################
+########################################################################
 
+
+
+########################################################################
+##########              CHECK USER FILES                ################
+########################################################################
+if($argv =~ /\-s\s+(\S+)/){$samp=$1;}
+else{print "missing sample prefix ex: -s Toxin_Day2  as in Toxin_Day2.fastq\n"; die;}
+$dir = './';
+opendir(DIR, $dir) or die "Could not open $dir\n";
+@FILES = grep(/\./i, readdir DIR);
+foreach my $file (@FILES){
+        if($file =~ /$samp.*GENES\.m8/){                $ingvu=$file;}
+        if($file =~ /$samp.*GENES.fna/){                $ingen=$file;}
+        if($file =~ /$samp.*READSvsGENES.rpkm/){        $ingrc=$file;}
+        if($file =~ /$samp.*READSvsCONTIGS.rpkm/){      $incov=$file;}
+        if($file =~ /$samp.*MCDD.fa/){                  $incon=$file;}
+}
+open(INGVU,$ingvu)||die "unable to open samp_GENES.m8 $ingvu:$!\n";
+open(INGEN,$ingen)||die "unable to open samp_GENES.fna $ingen:$!\n";
+open(INGRC,$ingrc)||die "unable to open samp_READSvsGENES.rpkm $ingrc:$!\n";
+open(INCC, $incov)||die "unable to open samp_READSvsCONTIGS.rpkm $incov:$!\n";
+open(INCON,$incon)||die "unable to open samp_MCDD.fa :$!\n";
+########################################################################
+########################################################################
+
+
+
+########################################################################
+##########              CHECK REFERENCE FILES           ################
+########################################################################
+if($argv =~ /\s\-d\s+(\S+)/){ $refdir=$1;}
+else{ $refdir='./'; }
+if($refdir !~ /\/$/){$refdir.='/';}
+$refdir = '/geomicro/data22/teals_pipeline/BOSS/';
+opendir(REFDIR, $refdir) or die "Could not open $dir\n";
+@FILES = grep(/\./i, readdir REFDIR);
+foreach my $file (@FILES){ print "file $file\n";
+        if($file =~ /TAXONOMY\_DB.*$year\.txt/){        $intax  =$refdir.$file;}
+        if($file =~ /UNIREF100\_INFO.*$year\.txt/){     $ininfo =$refdir.$file;}
+        if($file =~ /Function\_Names.*\.txt/){          $infn   =$refdir.$file;}
+        if($file =~ /FUNCTION\_MODELS.*\.txt/){         $infmod =$refdir.$file;}
+}
+open(INTAX, $intax)||die "unable to open intax $intax:$!\n";
+if($ininfo=~/\.gz$/){open(INFO, "gunzip -c $ininfo |")||die "unable to open uniref info file:$!\n";}
+else{open(INFO,$ininfo)||die "unable to open uniref info file:$!\n";}
+open(INFN, $infn)||die "unable to open function names file:$!\n";
+open(INMOD, $infmod)||die "unable to open function models file:$!\n";
+########################################################################
+########################################################################
+
+
+
+
+########################################################################
+##########              GET USER SETTINGS               ################
+########################################################################
+if($argv =~/\s\-k\s+([\d\.]+)/){$top=$1;}else{$top = 0.9;}
+if($argv =~/\s\-x\s+(\d+)/){$mingen=$1;} else{$mingen = 3;}
+if($argv =~/\s\-m\s+(\d+)/){$minid=$1;}  else{$minid = 50;}
+if($argv =~/\s\-c\s+(\d+)/){$mincov=$1}  else{$mincov = 70;}
+if($argv =~/\s\-n\s+(\d+)/){$min_mod=$1} else{$min_mod = 5;}
+$minsco=$minid*$mincov;
+########################################################################
+########################################################################
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+__END__
 
 if($argv =~ /\-d\s+(\S+)/){
         $dir=$1;
