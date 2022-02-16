@@ -93,8 +93,7 @@ print LOG "dir $dir\ningvu $ingvu\ningen $ingen\ningrc $ingrc\nincov $incov\ninc
 ########################################################################
 if($argv =~ /\s\-d\s+(\S+)/){ $refdir=$1;} else{ $refdir='./'; }
 if($refdir !~ /\/$/){$refdir.='/';}
-$refdir = '/geomicro/data22/teals_pipeline/BOSS/';
-opendir(REFDIR, $refdir) or die "Could not open $dir\n";
+opendir(REFDIR, $refdir) or die "Could not open $refdir\n";
 @FILES = grep(/\./i, readdir REFDIR);
 foreach my $file (@FILES){
 	if($file =~ /TAXONOMY\_DB.*$year\.txt/){	$intax	=$refdir.$file;}
