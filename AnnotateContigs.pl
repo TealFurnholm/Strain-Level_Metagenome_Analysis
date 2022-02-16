@@ -150,19 +150,19 @@ print LOG "top $top\nmingen $mingen\nminid $minid\nmincov $mincov\nmin_mod $min_
         print "RETRIEVE CPD NAMES\n";
         $start=147;
         $count=0;
-        #while($count <=10){
-        #	$count++;
-        #	$file='https://ftp.ebi.ac.uk/pub/databases/chebi/archive/rel'.$start.'/Flat_file_tab_delimited/names.tsv.gz';
-        #	qx{wget -O nx.tsv.gz $file};
-        #	qx{cat nx.tsv.gz >> names.tsv.gz};
-        #	qx{rm nx.tsv.gz};
-        #	$start+=12;
-        #	print "on count $count start $start\n";
-        #}
+        while($count <=10){
+        	$count++;
+        	$file='https://ftp.ebi.ac.uk/pub/databases/chebi/archive/rel'.$start.'/Flat_file_tab_delimited/names.tsv.gz';
+        	qx{wget -O nx.tsv.gz $file};
+        	qx{cat nx.tsv.gz >> names.tsv.gz};
+        	qx{rm nx.tsv.gz};
+        	$start+=12;
+        	print "on count $count start $start\n";
+        }
 
 	#INPUT NAMES
 	print "INPUTTING NAMES\n";
-	#qx{gunzip -f names.tsv.gz};
+	qx{gunzip -f names.tsv.gz};
 	open(INCPDNM, "names.tsv")||last;
 	while(<INCPDNM>){
 	        if($_!~/\w/){next;}
