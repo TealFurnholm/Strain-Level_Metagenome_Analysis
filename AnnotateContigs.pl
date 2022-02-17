@@ -415,7 +415,7 @@ undef(%GENE_SCO);
 $on=0;
 $time=localtime;
 print "input $ininfo time $time\n";
-open(INFO,"TEST_ANCON.txt")||die; ### !!!!
+open(INFO,$ininfo)||die; ### !!!!
 while(<INFO>){
 	if($_ !~ /\w/){next;}
 	$_=uc($_);
